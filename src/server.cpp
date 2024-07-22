@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <unordered_map>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -50,7 +51,7 @@ int main(int argc, char **argv) {
   
   int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
   
-  char msg[500] = {};
+  char msg[65535] = {}; // TCP message max length
 
   if (recv(client_connection, msg, sizeof(msg)-1, 0) < 0){
 
@@ -62,16 +63,42 @@ int main(int argc, char **argv) {
 
   std::string ok_message = "HTTP/1.1 200 OK\r\n\r\n";
   std::string bad_request_message = "HTTP/1.1 404 Not Found\r\n\r\n";
+  std::string echo_message = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
+  
+  std::string msg_str = (std::string) msg;
+  std::string http_method = msg_str.substr(0, msg_str.find(' '));
+  msg_str = msg_str.substr(msg_str.find(' ')+1);
+  std::string request_target = msg_str.substr(0, msg_str.find(' '));
+  msg_str = msg_str.substr(msg_str.find(' ')+1);
+  std::string http_version = msg_str.substr(0, msg_str.find("\\r\\n"));
+  msg_str = msg_str.substr(msg_str.find("\\r\\n")+4);
 
-  for(int i = 0; i < sizeof(msg); i++){
-    if(msg[i] == '/'){
-      if(msg[i+1] == ' '){
-        send(client_connection, ok_message.c_str(), ok_message.length(), 0);
-      }
-      else send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
+  std::unordered_map<std::string, std::string> headers;
+  while(msg_str.find("\\r\\n") != -1){
+    std::string header = msg_str.substr(0, msg_str.find("\\r\\n"));
+    if(header.size()==0){
+      msg_str = msg_str.substr(msg_str.find("\\r\\n")+4);
       break;
     }
+    std::string header_name = header.substr(0, msg_str.find(": "));
+    std::string header_value = header.substr(msg_str.find(": ")+2);
+    headers.insert({header_name, header_value});
+    msg_str = msg_str.substr(msg_str.find("\\r\\n")+4);
   }
+
+  std::string body = msg_str;
+  std::cout<<http_version<<'\n';
+  for (auto i : headers)
+        std::cout << i.first << "    " << i.second << '\n';  
+  
+  if(request_target == "/") send(client_connection, ok_message.c_str(), ok_message.length(), 0);
+    else if(request_target.find("/echo/") != -1){
+      std::string text = request_target.substr(request_target.find("/echo/") + 6);
+      std::string send_echo = echo_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+      send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+   
+    }
+      else send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
 
   std::cout << "Client has connected\n";
   
