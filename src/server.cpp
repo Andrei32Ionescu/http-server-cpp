@@ -49,8 +49,30 @@ int main(int argc, char **argv) {
   std::cout << "Waiting for a client to connect...\n";
   
   int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  std::string message = "HTTP/1.1 200 OK\r\n\r\n";
-  send(client_connection, message.c_str(), message.length(), 0);
+  
+  char msg[500] = {};
+
+  if (recv(client_connection, msg, sizeof(msg)-1, 0) < 0){
+
+    std::cerr << "listen failed\n";
+
+    return 1;
+
+  }
+
+  std::string ok_message = "HTTP/1.1 200 OK\r\n\r\n";
+  std::string bad_request_message = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+  for(int i = 0; i < sizeof(msg); i++){
+    if(msg[i] == '/'){
+      if(msg[i+1] == ' '){
+        send(client_connection, ok_message.c_str(), ok_message.length(), 0);
+      }
+      else send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
+      break;
+    }
+  }
+
   std::cout << "Client has connected\n";
   
   close(server_fd);
