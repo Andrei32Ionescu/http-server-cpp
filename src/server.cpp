@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-
+// TODO: refactor this method into multiple smaller ones 
 void respond_to_request(int id, int client_connection, int argc, char **argv)
 {
   char msg[65535] = {}; // TCP message max length
@@ -76,7 +76,8 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
 
   }
 
-  std::string ok_message = "HTTP/1.1 200 OK\r\n\r\n";
+  std::string get_ok_message = "HTTP/1.1 200 OK\r\n\r\n";
+  std::string post_ok_message = "HTTP/1.1 201 Created\r\n\r\n";
   std::string bad_request_message = "HTTP/1.1 404 Not Found\r\n\r\n";
   std::string text_message = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
   std::string file_message = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ";
@@ -107,48 +108,68 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
 
   std::string body = msg_str;
 
-  if(request_target == "/") {
-    send(client_connection, ok_message.c_str(), ok_message.length(), 0);
-  } 
-  else if(request_target.substr(0,6) == "/echo/") {
-    std::string text = request_target.substr(6);
-    std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
-    send(client_connection, send_echo.c_str(), send_echo.length(), 0);
-  } 
-  else if(request_target == "/user-agent") {
-    std::string text = headers["user-agent"];
-    std::string send_user_agent = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
-    send(client_connection, send_user_agent.c_str(), send_user_agent.length(), 0);  
-  }
-  else if(request_target.substr(0,7) == "/files/") {
-    std::string directory;
-    for (int i = 1; i < argc; i++) {  
-      if (i + 1 != argc) {
-        if (strcmp(argv[i], "--directory") == 0) {                
-            directory = argv[i + 1];
-            i++;
+  if(http_method == "GET") {
+    if(request_target == "/") {
+      send(client_connection, get_ok_message.c_str(), get_ok_message.length(), 0);
+    } 
+    else if(request_target.substr(0,6) == "/echo/") {
+      std::string text = request_target.substr(6);
+      std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+      send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+    } 
+    else if(request_target == "/user-agent") {
+      std::string text = headers["user-agent"];
+      std::string send_user_agent = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+      send(client_connection, send_user_agent.c_str(), send_user_agent.length(), 0);  
+    }
+    else if(request_target.substr(0,7) == "/files/") {
+      std::string directory;
+      for (int i = 1; i < argc; i++) {  
+        if (i + 1 != argc) {
+          if (strcmp(argv[i], "--directory") == 0) {                
+              directory = argv[i + 1];
+              i++;
+          }
         }
       }
-    }
-    std::string file_location = directory + request_target.substr(7);
-    std::ifstream file(file_location.c_str(), std::ios::binary);
-    
-    if (!file) {
-      send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
+      std::string file_location = directory + request_target.substr(7);
+      std::ifstream file(file_location.c_str(), std::ios::binary);
+
+      if (!file) {
+        send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
+      }
+      else {
+        file.seekg(0, std::ios::end);
+        size_t file_size = file.tellg();
+        file.seekg(0);
+        std::vector<char> buffer(file_size);
+        file.read(buffer.data(), file_size);
+        std::string send_file = file_message + std::to_string(file_size) + "\r\n\r\n" + std::string(buffer.begin(), buffer.end());
+        send(client_connection, send_file.c_str(), send_file.length(), 0);
+      }
     }
     else {
-      file.seekg(0, std::ios::end);
-      size_t file_size = file.tellg();
-      file.seekg(0);
-      std::vector<char> buffer(file_size);
-      file.read(buffer.data(), file_size);
-      std::string send_file = file_message + std::to_string(file_size) + "\r\n\r\n" + std::string(buffer.begin(), buffer.end());
-      send(client_connection, send_file.c_str(), send_file.length(), 0);
+      send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
     }
   }
-  else {
-    send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
-  }
+  else if(http_method == "POST") {
+    if(request_target.substr(0,7) == "/files/") {
+      std::string directory;
+      for (int i = 1; i < argc; i++) {  
+        if (i + 1 != argc) {
+          if (strcmp(argv[i], "--directory") == 0) {                
+              directory = argv[i + 1];
+              i++;
+          }
+        }
+      }
+      std::string file_location = directory + request_target.substr(7);
+      std::ofstream file(file_location.c_str(), std::ios::binary);
+      file<<body;
+      send(client_connection, post_ok_message.c_str(), post_ok_message.length(), 0);
 
+      
+    }
+  }
   return;
 }
