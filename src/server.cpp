@@ -11,6 +11,7 @@
 #include "server.h"
 #include <thread>
 #include <vector>
+#include <fstream>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -56,7 +57,7 @@ int main(int argc, char **argv) {
   while(true){
     int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
     std::cout << "A client has connected - connection id: " + std::to_string(client_connection) + "\n";
-    threads.emplace_back(respond_to_request, i, client_connection);
+    threads.emplace_back(respond_to_request, i, client_connection, argc, argv);
     i++;
   }
 
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void respond_to_request(int id, int client_connection)
+void respond_to_request(int id, int client_connection, int argc, char **argv)
 {
   char msg[65535] = {}; // TCP message max length
 
@@ -78,7 +79,8 @@ void respond_to_request(int id, int client_connection)
   std::string ok_message = "HTTP/1.1 200 OK\r\n\r\n";
   std::string bad_request_message = "HTTP/1.1 404 Not Found\r\n\r\n";
   std::string text_message = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ";
-  
+  std::string file_message = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: ";
+
   std::string msg_str = (std::string) msg;
   std::string http_method = msg_str.substr(0, msg_str.find(' '));
   msg_str = msg_str.substr(msg_str.find(' ') + 1);
@@ -104,12 +106,12 @@ void respond_to_request(int id, int client_connection)
   }
 
   std::string body = msg_str;
-  
+
   if(request_target == "/") {
     send(client_connection, ok_message.c_str(), ok_message.length(), 0);
   } 
   else if(request_target.substr(0,6) == "/echo/") {
-    std::string text = request_target.substr(request_target.find("/echo/") + 6);
+    std::string text = request_target.substr(6);
     std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
     send(client_connection, send_echo.c_str(), send_echo.length(), 0);
   } 
@@ -117,7 +119,33 @@ void respond_to_request(int id, int client_connection)
     std::string text = headers["user-agent"];
     std::string send_user_agent = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
     send(client_connection, send_user_agent.c_str(), send_user_agent.length(), 0);  
-  } 
+  }
+  else if(request_target.substr(0,7) == "/files/") {
+    std::string directory;
+    for (int i = 1; i < argc; i++) {  
+      if (i + 1 != argc) {
+        if (strcmp(argv[i], "--directory") == 0) {                
+            directory = argv[i + 1];
+            i++;
+        }
+      }
+    }
+    std::string file_location = directory + request_target.substr(7);
+    std::ifstream file(file_location.c_str(), std::ios::binary);
+    
+    if (!file) {
+      send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
+    }
+    else {
+      file.seekg(0, std::ios::end);
+      size_t file_size = file.tellg();
+      file.seekg(0);
+      std::vector<char> buffer(file_size);
+      file.read(buffer.data(), file_size);
+      std::string send_file = file_message + std::to_string(file_size) + "\r\n\r\n" + std::string(buffer.begin(), buffer.end());
+      send(client_connection, send_file.c_str(), send_file.length(), 0);
+    }
+  }
   else {
     send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
   }
