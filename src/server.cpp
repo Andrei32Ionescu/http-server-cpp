@@ -8,6 +8,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unordered_map>
+#include "server.h"
+#include <thread>
+#include <vector>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -48,16 +51,27 @@ int main(int argc, char **argv) {
   int client_addr_len = sizeof(client_addr);
   
   std::cout << "Waiting for a client to connect...\n";
-  
-  int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
-  
+  std::vector<std::thread> threads;
+  int i = 0;
+  while(true){
+    int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+    std::cout << "A client has connected - connection id: " + std::to_string(client_connection) + "\n";
+    threads.emplace_back(respond_to_request, i, client_connection);
+    i++;
+  }
+
+  close(server_fd);
+
+  return 0;
+}
+
+void respond_to_request(int id, int client_connection)
+{
   char msg[65535] = {}; // TCP message max length
 
   if (recv(client_connection, msg, sizeof(msg) - 1, 0) < 0) {
 
     std::cerr << "listen failed\n";
-
-    return 1;
 
   }
 
@@ -108,9 +122,5 @@ int main(int argc, char **argv) {
     send(client_connection, bad_request_message.c_str(), bad_request_message.length(), 0);
   }
 
-  std::cout << "Client has connected\n";
-  
-  close(server_fd);
-
-  return 0;
+  return;
 }
