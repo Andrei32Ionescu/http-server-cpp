@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 #include <fstream>
+#include <set>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -76,6 +77,7 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
 
   }
 
+  std::string encoded_text_message = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\nContent-Length: ";
   std::string get_ok_message = "HTTP/1.1 200 OK\r\n\r\n";
   std::string post_ok_message = "HTTP/1.1 201 Created\r\n\r\n";
   std::string bad_request_message = "HTTP/1.1 404 Not Found\r\n\r\n";
@@ -113,9 +115,35 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
       send(client_connection, get_ok_message.c_str(), get_ok_message.length(), 0);
     } 
     else if(request_target.substr(0,6) == "/echo/") {
-      std::string text = request_target.substr(6);
-      std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
-      send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+      if(headers.find("accept-encoding") == headers.end()) {
+        std::string text = request_target.substr(6);
+        std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+        send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+      }
+      else {
+        std::string encoding_list = headers["accept-encoding"];
+        std::set<std::string> accepted_encodings;
+        while(encoding_list.find(',') != -1) {
+          std::string encoding = encoding_list.substr(0, encoding_list.find(", "));
+          accepted_encodings.insert(encoding);
+          encoding_list = encoding_list.substr(encoding_list.find(", ") + 2);
+        }
+        if(encoding_list.size() > 0) {
+          accepted_encodings.insert(encoding_list);
+        }
+
+        if(accepted_encodings.find("gzip") != accepted_encodings.end()) {
+          std::string text = request_target.substr(6);
+          std::string send_echo = encoded_text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+          send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+        }
+        else {
+          std::string text = request_target.substr(6);
+          std::string send_echo = text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
+          send(client_connection, send_echo.c_str(), send_echo.length(), 0);
+        }
+      }
+      
     } 
     else if(request_target == "/user-agent") {
       std::string text = headers["user-agent"];
