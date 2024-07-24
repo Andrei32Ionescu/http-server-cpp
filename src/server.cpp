@@ -13,6 +13,8 @@
 #include <vector>
 #include <fstream>
 #include <set>
+#include <sstream>
+#include <zlib.h>
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -133,7 +135,7 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
         }
 
         if(accepted_encodings.find("gzip") != accepted_encodings.end()) {
-          std::string text = request_target.substr(6);
+          std::string text = compress(request_target.substr(6));
           std::string send_echo = encoded_text_message + std::to_string(text.size()) + "\r\n\r\n" + text;
           send(client_connection, send_echo.c_str(), send_echo.length(), 0);
         }
@@ -200,4 +202,54 @@ void respond_to_request(int id, int client_connection, int argc, char **argv)
     }
   }
   return;
+}
+
+std::string compress(const std::string &data) {
+
+    z_stream zs;
+
+    memset(&zs, 0, sizeof(zs));
+
+    if (deflateInit2(&zs, Z_BEST_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+
+        throw std::runtime_error("deflateInit2 failed while compressing.");
+
+    }
+
+    zs.next_in = (Bytef *)data.data();
+
+    zs.avail_in = data.size();
+
+    int ret;
+
+    char outbuffer[32768];
+
+    std::string outstring;
+
+    do {
+
+        zs.next_out = reinterpret_cast<Bytef *>(outbuffer);
+
+        zs.avail_out = sizeof(outbuffer);
+
+        ret = deflate(&zs, Z_FINISH);
+
+        if (outstring.size() < zs.total_out) {
+
+            outstring.append(outbuffer, zs.total_out - outstring.size());
+
+        }
+
+    } while (ret == Z_OK);
+
+    deflateEnd(&zs);
+
+    if (ret != Z_STREAM_END) {
+
+        throw std::runtime_error("Exception during zlib compression: (" + std::to_string(ret) + ") " + zs.msg);
+
+    }
+
+    return outstring;
+
 }
