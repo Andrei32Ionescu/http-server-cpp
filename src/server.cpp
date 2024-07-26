@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <string>
+#include <cstring>
 #include <netdb.h>
 #include <thread>
 #include <vector>
@@ -11,6 +12,16 @@ int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+
+  std::string file_directory;
+  for (int i = 1; i < argc; i++) {  
+    if (i + 1 != argc) {
+      if (strcmp(argv[i], "--directory") == 0) {                
+          file_directory = argv[i + 1];
+          break;
+      }
+    }
+  }
 
   std::pair<int, int> server_status = create_server(4221);
   if(server_status.first != 0) {
@@ -27,7 +38,7 @@ int main(int argc, char **argv) {
   while(true){
     int client_connection = accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
     std::cout << "A client has connected - connection id: " + std::to_string(client_connection) + "\n";
-    threads.emplace_back(respond_to_request, i, client_connection, argc, argv);
+    threads.emplace_back(respond_to_request, i, client_connection, file_directory);
     i++;
   }
 
