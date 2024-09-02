@@ -23,9 +23,12 @@ int main(int argc, char **argv) {
     }
   }
 
+  // First element of the pair is the code returned during server creation
+  // Second element of the pair is the resulting socket file descriptor
   std::pair<int, int> server_status = create_server(4221);
   if(server_status.first != 0) {
     std::cerr<< "Server creation failed!\n";
+    return server_status.first;
   }
   int server_fd = server_status.second;
 
